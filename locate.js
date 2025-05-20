@@ -35,7 +35,7 @@ let i = 0
 while (i < 4 ) {
     let latPart = latitude.split('|')[i]
     let longPart = longitude.split('|')[i]
-    theLatParts.push(latPart)
+    theLatParts.push(latPart) 
     theLongParts.push(longPart)
     i++
 }
@@ -50,7 +50,7 @@ let eWHemisphere = theLongParts.pop()
 
 theLocation.latitude.direction = nSHemisphere
 theLocation.longitude.direction = eWHemisphere
-console.log(theLocation)
+
 console.log('Lat Hemisphere:', nSHemisphere)
 console.log('Long Hemisphere:', eWHemisphere)
 
@@ -59,19 +59,21 @@ const mathMinute = mathSecond
 console.log('A second or minute is:', mathSecond, degreeChar)
 
 
-console.log(theLatParts)
-console.log(theLongParts)
+theLocation.latitude.degrees = latitude.split('|')[0]
+theLocation.latitude.minutes = latitude.split('|')[1]
+theLocation.latitude.seconds = latitude.split('|')[2]
+theLocation.longitude.degrees = latitude.split('|')[0]
+theLocation.longitude.minutes = latitude.split('|')[1]
+theLocation.longitude.seconds = latitude.split('|')[2]
 
-// let latitudeDegrees = latitude.split('|')[0]
-// let latitudeMinutes = latitude.split('|')[1]
-// let latitudeSeconds = latitude.split('|')[2]
-// let latitudeDirection = latitude.split('|')[3]
 
-// console.log("latitudeDegrees", latitudeDegrees)
 // console.log("latitudeMinutes", latitudeMinutes)
 // console.log("latitudeSeconds", latitudeSeconds)
 // console.log("latitudeSeconds", latitudeDirection)
 
+
+theLocation.latitude.degrees = theLatParts[0]
+console.log('Location Object: ', theLocation)
 
 
 const myLocation = new Location(latitude, longitude)
