@@ -11,6 +11,23 @@ const degreeChar = '°'
 let latitude = '30|13|29.5|N'
 let longitude = '97|42|16.8|W'
 
+let theLocation = {
+    latitude: {
+        degrees: 0,
+        minutes: 0,
+        seconds: 0,
+        direction: ''
+    },
+    longitude: {
+        degrees: 0,
+        minutes: 0,
+        seconds: 0,
+        direction: ''
+
+    }
+}
+
+
 let theLatParts = []
 let theLongParts = []
 
@@ -23,8 +40,17 @@ while (i < 4 ) {
     i++
 }
 
+
+
 let nSHemisphere = theLatParts.pop()
 let eWHemisphere = theLongParts.pop()
+
+
+
+
+theLocation.latitude.direction = nSHemisphere
+theLocation.longitude.direction = eWHemisphere
+console.log(theLocation)
 console.log('Lat Hemisphere:', nSHemisphere)
 console.log('Long Hemisphere:', eWHemisphere)
 
@@ -52,4 +78,3 @@ const myLocation = new Location(latitude, longitude)
 console.log( myLocation)
 
 //I know that I'm going to need to do a simliarity check here.
-
