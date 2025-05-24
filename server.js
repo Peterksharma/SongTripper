@@ -5,6 +5,7 @@ const morgan = require('morgan');
 const cityRoutes = require('./routes/cityRoutes');
 const artistRoutes = require('./routes/artistRoutes');
 const errorHandler = require('./utils/errorHandler');
+const spotifyAuthRoutes = require('./routes/spotifyAuthRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -21,6 +22,7 @@ app.get('/api/health', (req, res) => {
 // TODO: Add city and artist routes here
 app.use('/api/cities', cityRoutes);
 app.use('/api/artists', artistRoutes);
+app.use('/api/spotify', spotifyAuthRoutes);
 
 app.use(errorHandler);
 
