@@ -1,24 +1,36 @@
-const { convertGpsToCity } = require('../services/locationService');
-const { getCityId, getArtistsByCityId } = require('../services/musicService');
+const { parseCoordinates, parseLimit } = require('../utils/geo');
+const locationService = require('../services/locationService');
+const musicBrainz = require('../services/musicBrainzService');
+const ApiError = require('../utils/apiError');
 
+/**
+ * GET /api/artists/by-location?lat=&lng=&limit= — the raw MusicBrainz view:
+ * artists associated with the city at these coordinates, unranked, without
+ * Spotify resolution. The curated, playable view lives at /api/songs.
+ */
 async function getArtistsByLocation(req, res, next) {
-  const { lat, lng, limit } = req.query;
-  if (!lat || !lng) {
-    return res.status(400).json({ error: 'lat and lng query parameters are required' });
-  }
   try {
-    // Step 1: Get city info from GPS
-    const data = await convertGpsToCity(lat, lng);
-    const result = data.results && data.results[0];
-    if (!result) return res.status(404).json({ error: 'No city found for coordinates' });
-    const city = result.components.city || result.components.town || result.components.village || null;
-    const state = result.components.state || null;
-    if (!city) return res.status(404).json({ error: 'No city name found for coordinates' });
-    // Step 2: Get MusicBrainz city ID
-    const cityId = await getCityId(city, state);
-    // Step 3: Get artists by city ID
-    const artists = await getArtistsByCityId(cityId, limit ? parseInt(limit) : 10);
-    res.json({ city, state, cityId, artists });
+    const { lat, lng } = parseCoordinates(req.query.lat, req.query.lng);
+    const limit = parseLimit(req.query.limit, { fallback: 25, max: 100 });
+
+    const place = await locationService.convertGpsToCity(lat, lng);
+    if (!place.city) {
+      throw new ApiError(404, 'No city found at these coordinates');
+    }
+    const { areaId, areaName } = await musicBrainz.findCityArea(place.city, {
+      state: place.state,
+      country: place.country,
+    });
+    const { artists, artistCount } = await musicBrainz.getArtistsFromArea(areaId, limit);
+
+    res.json({
+      location: place,
+      musicBrainzAreaId: areaId,
+      areaName,
+      artistCount,
+      truncated: artists.length < artistCount,
+      artists,
+    });
   } catch (e) {
     next(e);
   }
