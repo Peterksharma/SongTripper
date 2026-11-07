@@ -1,19 +1,16 @@
-const { convertGpsToCity } = require('../services/locationService');
+const { parseCoordinates } = require('../utils/geo');
+const locationService = require('../services/locationService');
+const ApiError = require('../utils/apiError');
 
+/** GET /api/cities/lookup?lat=&lng= — reverse-geocode a coordinate pair. */
 async function lookupCity(req, res, next) {
-  const { lat, lng } = req.query;
-  if (!lat || !lng) {
-    return res.status(400).json({ error: 'lat and lng query parameters are required' });
-  }
   try {
-    const data = await convertGpsToCity(lat, lng);
-    // Extract city info from OpenCage response
-    const result = data.results && data.results[0];
-    if (!result) return res.status(404).json({ error: 'No city found for coordinates' });
-    const city = result.components.city || result.components.town || result.components.village || null;
-    const state = result.components.state || null;
-    const country = result.components.country || null;
-    res.json({ city, state, country, raw: result });
+    const { lat, lng } = parseCoordinates(req.query.lat, req.query.lng);
+    const place = await locationService.convertGpsToCity(lat, lng);
+    if (!place.city) {
+      throw new ApiError(404, 'No city found at these coordinates');
+    }
+    res.json(place);
   } catch (e) {
     next(e);
   }
