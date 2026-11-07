@@ -1,0 +1,12 @@
+# Local infrastructure. Postgres is assumed native (Homebrew) on this
+# machine; only Redis runs in Docker:  docker compose up -d
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+volumes:
+  redis-data:

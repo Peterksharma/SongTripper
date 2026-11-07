@@ -1,22 +1,21 @@
 {
-  "name": "roadtripper",
+  "name": "songtripper",
   "version": "1.0.0",
-  "main": "index.js",
+  "description": "API server that suggests playable songs by artists from wherever you are",
+  "main": "server.js",
   "scripts": {
-    "test": "jest"
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "jest",
+    "db:migrate": "node scripts/migrate.js"
   },
-  "keywords": [],
-  "author": "",
   "license": "ISC",
-  "description": "",
   "dependencies": {
-    "axios": "^1.9.0",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
     "morgan": "^1.10.0",
-    "node-fetch": "^2.7.0",
-    "querystring": "^0.2.1",
+    "pg": "^8.16.0",
     "redis": "^5.1.0"
   },
   "devDependencies": {
