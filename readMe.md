@@ -1,186 +1,119 @@
-Roadtripper App - Complete Application Overview
-🎯 Core Concept
-An iPhone app that automatically discovers and queues music from local artists as you drive, creating a unique "musical road trip" experience that connects you to the places you visit.
+# SongTripper API
 
-🏗️ System Architecture
-📱 iPhone App (React Native)
-       ↕
-🌐 Your API Server (Node.js/FastAPI)
-       ↕
-🗄️ Database (PostgreSQL + Redis Cache)
-       ↕
-🎵 MusicBrainz API (Artist/Location Data)
+A server that answers one question: **"What music is *from* here?"**
 
-📱 iPhone App Features
-Core Functions:
+Send it GPS coordinates and it returns playable Spotify tracks by artists
+from that place — the local scene, the hometown heroes, the band that
+formed two neighborhoods over. Thin clients (phone apps, CarPlay, a web
+player) come later; this server owns all the intelligence.
 
-Real-time GPS tracking - Monitors location changes while driving
-Background processing - Continues working when app is minimized
-Music service integration - Connects to Spotify, Apple Music, YouTube Music
-Smart queuing - Adds local artists to your music queue automatically
-Driving-safe UI - Large buttons, voice commands, minimal interaction
+## How it works
 
-User Experience Flow:
+```
+GET /api/songs/by-location?lat=30.267&lng=-97.743
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 1. GPS → city          OpenCage reverse geocoding           │
+│ 2. city → area         MusicBrainz area search              │
+│ 3. area → artists      MusicBrainz browse (born/based here) │
+│ 4. artists → Spotify   identity links first, name search    │
+│                        as budgeted fallback                 │
+│ 5. rank & deal         popularity ranking, round-robin      │
+│                        across artists for variety           │
+└─────────────────────────────────────────────────────────────┘
+        │
+        ▼
+{ location, artists, tracks: [{ uri, name, album, artist, … }] }
+```
 
-Setup: User selects preferred music service, grants location permissions
-Driving: App detects location changes (new city/area)
-Discovery: Finds local artists from that area
-Integration: Queues songs into user's active music app
-Playback: Music plays seamlessly while driving
+Two data stores, both optional at runtime:
 
-Key Screens:
+- **Redis** — hot cache (geocoding, areas, rosters, finished answers).
+  Down? Everything still works, just slower.
+- **Postgres** — durable memory (cities, artists, city↔artist links,
+  Spotify resolutions). Down? Requests still succeed; the server just
+  doesn't remember between restarts.
 
-Dashboard: Current location, recently discovered artists, queue status
-Settings: Music service preferences, discovery radius, auto-queue settings
-History: Places visited, artists discovered, songs played
-Now Playing: Integration with active music app
+The three upstream APIs (OpenCage, MusicBrainz, Spotify) are load-bearing:
+if the one a request needs is unreachable, that request fails with an
+honest 502/503 rather than a fabricated answer.
 
+## Endpoints
 
-🖥️ Backend API Server
-Core Responsibilities:
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/health` | liveness check |
+| `GET /api/songs/by-location?lat=&lng=&limit=` | **flagship**: playable tracks by artists from here (`limit` 1–50, default 10) |
+| `GET /api/artists/by-location?lat=&lng=&limit=` | raw MusicBrainz artist roster, unranked (`limit` 1–100, default 25) |
+| `GET /api/cities/lookup?lat=&lng=` | reverse-geocode only |
+| `GET /api/spotify/login` → `/callback` | user OAuth (future playlist writing; not needed for suggestions) |
 
-Location Processing: Convert GPS coordinates to city/region data
-Artist Discovery: Query MusicBrainz for artists from specific locations
-Data Caching: Store popular cities/artists for fast retrieval
-Rate Limiting: Manage MusicBrainz API limits (1 req/second)
-Data Enhancement: Clean, filter, and rank artist data
+Coordinates are validated (`lat` ∈ [-90, 90], `lng` ∈ [-180, 180]) and
+rounded to a ~1.1 km grid for caching, so a moving car reuses cache
+entries instead of re-paying every upstream call.
 
-Key Endpoints:
-GET /api/artists/by-location?lat=30.267&lng=-97.743&limit=10
-GET /api/cities/lookup?lat=30.267&lng=-97.743
-POST /api/analytics/track-play
-GET /api/user/preferences
-Background Jobs:
+## Setup
 
-Cache Warmup: Pre-populate popular cities during off-peak hours
-Data Refresh: Update artist data weekly/monthly
-Analytics Processing: Track usage patterns, popular routes
+```bash
+npm install
+cp .env.example .env       # then fill in the keys
+docker compose up -d       # Redis
+createdb songtripper       # local Postgres (Homebrew)
+npm run db:migrate         # apply db/schema.sql (idempotent)
+npm run dev                # or: npm start
+```
 
+Required keys (see `.env.example`): `LOCATION_KEY` (OpenCage), `EMAIL`
+(MusicBrainz User-Agent etiquette), `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET`
+(app-level Client Credentials — no user login involved).
 
-🗄️ Database Design
-Core Tables:
-sqlCities (id, name, state, country, lat, lng, musicbrainz_id)
-Artists (id, name, musicbrainz_id, popularity_score, genres)
-CityArtists (city_id, artist_id, discovery_count)
-UserSessions (user_id, route_data, artists_discovered, timestamp)
-Caching Strategy:
+```bash
+npm test                   # 105 tests, no network needed
+```
 
-Redis Cache: Popular city → artists mappings
-TTL: 24 hours for hot data, 7 days for cold data
-Cache Warming: Background jobs for top 100 US cities
+## Spotify API note (Feb 2026 platform changes)
 
+Spotify removed several endpoints for apps registered after 2026‑02‑11
+(artist top-tracks, batch artist gets, the `popularity` field). This
+server **adapts at runtime**:
 
-🎵 Music Service Integration
-Phase 1: URL Schemes (MVP)
-javascript// Simple deep linking
-spotify:search:artist:Local Artist Name
-music://search?term=Artist Name (Apple Music)
-https://music.youtube.com/search?q=Artist
-Phase 2: Native SDKs (Advanced)
+- **Rich strategy** (apps registered before the cutoff): dedicated
+  top-tracks endpoint, batch popularity ranking.
+- **Lite strategy** (newer apps): track search filtered by artist
+  identity; ranking falls back to MusicBrainz link presence (an editor
+  bothering to link an artist to Spotify is itself a notability signal).
 
-Spotify SDK: True queue manipulation, playback control
-Apple MusicKit: Direct Apple Music integration
-Background Media Session: Lock screen controls
+A 403/410 from a rich endpoint flips the strategy automatically; the API
+contract to clients is identical either way.
 
-Supported Services:
+## Upstream etiquette
 
-Spotify (Primary target - largest user base)
-Apple Music (iOS native integration)
-YouTube Music (Fallback option)
-Pandora (Future consideration)
+- **MusicBrainz**: all requests flow through one serial throttle (≥1.1 s
+  spacing — their 1 req/sec rule), with a proper `User-Agent`, and one
+  retry on 503.
+- **Spotify**: honors `Retry-After` on 429 (bounded; long lockouts become
+  a clean 503), refreshes the app token on 401.
+- Inbound, each client IP gets 1 request/second on the data endpoints.
 
+## Layout
 
-🚗 Driving-Specific Features
-Safety First:
+```
+app.js                  express app (exported for tests)
+server.js               entrypoint: listen + graceful shutdown
+config.js               env, read once
+routes/ controllers/    HTTP layer (validation, shaping)
+services/               locationService, musicBrainzService,
+                        spotifyService, suggestionService (the pipeline)
+db/                     schema.sql, pool, repository
+utils/                  cache, throttle, geo grid, rate limiter, errors
+tests/                  105 tests, all upstreams mocked
+```
 
-Voice Commands: "Play local artists", "Skip to next city"
-CarPlay Integration: Native car dashboard integration (Phase 2)
-Auto-Queue Mode: Zero interaction required while driving
-Large Touch Targets: Easy to tap safely
+## Roadmap
 
-Location Intelligence:
-
-Smart Triggering: Only discover on significant location changes
-Highway Mode: Reduced sensitivity for highway driving
-City Detection: Municipal boundaries vs. metro areas
-Offline Fallback: Cached data for poor signal areas
-
-
-🔧 Technical Implementation
-iPhone App (React Native):
-├── Location Services (react-native-geolocation)
-├── Background Tasks (react-native-background-job)
-├── Music Integration (URL schemes + native modules)
-├── API Client (axios/fetch)
-├── Local Storage (AsyncStorage)
-└── UI Components (driving-optimized)
-Backend Server (Node.js/Python):
-├── Express/FastAPI Framework
-├── Location Processing (reverse geocoding)
-├── MusicBrainz API Client
-├── Redis Caching Layer
-├── PostgreSQL Database
-└── Background Job Queue
-
-📊 Analytics & Insights
-User Analytics:
-
-Discovery Patterns: Which cities/routes generate most discoveries
-Music Preferences: Which local artists get queued/played
-Geographic Trends: Popular musical regions
-Usage Patterns: Peak driving/discovery times
-
-Content Analytics:
-
-Artist Performance: Which local artists are most popular
-Geographic Coverage: Cities with rich vs. sparse musical history
-Service Usage: Spotify vs. Apple Music adoption
-
-
-🚀 Development Phases
-Phase 1: MVP (3-4 months)
-
-React Native app with basic location tracking
-Simple API server with MusicBrainz integration
-URL scheme music integration
-Core cities cached (top 50 US cities)
-
-Phase 2: Enhanced (6-8 months)
-
-Native music SDK integration
-CarPlay/Android Auto support
-Advanced caching and background processing
-User accounts and preferences
-
-Phase 3: Scale (ongoing)
-
-International city coverage
-Additional music services
-Social features (share discoveries)
-Premium features (custom discovery radius, etc.)
-
-
-💰 Business Model Options
-Freemium:
-
-Free: Basic discovery, limited to major cities
-Premium: All cities, advanced features, no ads
-
-Subscription:
-
-Monthly/yearly for full feature access
-Integration with existing music service subscriptions
-
-Partnerships:
-
-Revenue share with music services
-Tourism board partnerships for regional discovery
-
-
-🎯 Success Metrics
-
-User Engagement: Daily/monthly active users
-Discovery Rate: Artists discovered per mile driven
-Music Integration: Songs actually queued/played
-Geographic Coverage: Cities with active discovery
-User Retention: Return usage on road trips
+1. **Now** — this server, local.
+2. **Next** — deploy (Railway), thin mobile client that sends GPS and
+   plays the returned `spotify:track:` URIs.
+3. **Later** — user accounts + stored OAuth tokens, server-written
+   "Road Trip" playlists, trip history, cache warming for popular routes.
